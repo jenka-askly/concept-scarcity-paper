@@ -1,14 +1,27 @@
-# build-paper.ps1
-# Builds paper/main.pdf using latexmk (recommended).
-# Prereq (Windows): install MiKTeX or TeX Live, and ensure latexmk is available.
+name: Build paper PDF
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+on:
+  push:
+    paths:
+      - "paper/**"
+      - ".github/workflows/build-paper.yml"
+  workflow_dispatch:
 
-Push-Location "$PSScriptRoot\paper"
-try {
-  latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error main.tex
-}
-finally {
-  Pop-Location
-}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build LaTeX (paper/main.tex)
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: main.tex
+          working_directory: paper
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-pdf
+          path: paper/main.pdf
