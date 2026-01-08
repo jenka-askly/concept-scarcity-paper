@@ -1,0 +1,497 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{titling}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{framed}
+
+% Page setup
+\geometry{a4paper, margin=1in}
+
+% Title metadata
+\title{Language as a Bottleneck for Embodied Intelligence:\\An Embodied Concept Vocabulary for Squeezing and Beyond}
+\author{Joe Yap\\Independent Research\\\texttt{yapperappllc@gmail.com}}
+\date{December 15, 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Text-based reasoning systems can describe physical situations but often fail at embodied tasks. We argue that the issue is not only missing sensory data but a representational bottleneck: ordinary language lacks stable, fine-grained concepts for the micro-phenomena that actually govern manipulation. As a result, models trained on natural language inherit conceptual sparsity, causing attention to diffuse and causal chains to break.
+
+We introduce a compact concept scaffold for the bounded domain of hand squeezing, showing how explicit handles for tactile cues, material response, and control laws reduce ambiguity and improve mechanistic reasoning. We intentionally restrict this study to a narrow domain to make the representational claim concrete rather than broad. The scaffold maps directly onto robotic sensors and actuators, yielding concrete hardware critiques that ordinary prose does not elicit. We then propose a controlled evaluation that holds physical information constant while varying representational form. Unlike traditional benchmarks that measure statistical marginal gains, we frame this as a test of categorical reasoning shifts. We provide a distributed verification protocol (Box 1) inviting readers to reproduce the effect immediately, arguing that for engineering domains, portable concept scaffolds offer a more robust validation mechanism than static performance metrics.
+\end{abstract}
+
+\section{Introduction}
+Large models trained on internet-scale text corpora demonstrate strong performance on many cognitive tasks, but they remain noticeably weaker in domains that depend on embodiment: fine-grained manipulation, physical intuition, and closed-loop motor control. A common explanation is that text lacks access to raw sensory streams (vision, touch, proprioception, audio), so text-trained systems never observe the data needed to learn sensorimotor structure.
+
+In this work we propose a different, orthogonal viewpoint: the primary bottleneck is not necessarily the medium of text, but the conceptual vocabulary encoded in natural language. Text can, in principle, describe sensorimotor loops, contact mechanics, and control laws. However, human languages evolved for everyday communication, not for decomposing embodied experience into mechanistically meaningful primitives. As a result, we lack words for most of the micro-distinctions that underpin manipulation. Systems trained on ordinary text inherit this conceptual sparsity.
+
+Our thesis is:
+\begin{quote}
+Text can, in principle, specify embodied intelligence. A key bottleneck is the absence of a fine-grained, systematically organized vocabulary of embodied concepts in ordinary language.
+\end{quote}
+
+\begin{framed}
+\noindent \textbf{Box 1: The ``Ten-Minute'' Replication Challenge (Distributed Verification)}
+
+We recognize that papers claiming ``reasoning improvements'' are common and often fragile. We also recognize that statistical averages can mask failure modes. Therefore, rather than asking you to trust our pilot data, we invite you to verify the core claim immediately using your own tools.
+
+\textbf{The Protocol (Time: $\sim$10 Minutes)}
+
+\begin{enumerate}
+    \item \textbf{Setup (Critical):} Upload this PDF (or copy Appendix B/C) into a Frontier ``Pro'' Model (e.g., Gemini 3 Pro, GPT-5.2 Pro).
+    \begin{itemize}
+        \item \textit{Note: Standard models may fail to ingest the full text or drop context due to length. The fact that even ``Pro'' models with massive context windows struggle to prioritize the correct physics without a scaffold validates the ``Attention Dilution'' hypothesis (Section 2.3).}
+    \end{itemize}
+    \item \textbf{The Prompt:} Copy the following instructions verbatim:
+    \begin{quote}
+    ``Read the paper. Simulate the `Sand/Locomotion' scenario explained in Appendix D, Prompt 1. First, reason about the problem using your standard training (baseline). Then, reason about it using the Concept Scaffold defined in the paper. Compare the specificity of the two outputs.''
+    \end{quote}
+    \item \textbf{The Corporate Test (Optional):} To test utility for your specific domain, follow up with:
+    \begin{quote}
+    ``For [My Team's] Engineering context, how would we adapt this scaffold to help my organization.''
+    \end{quote}
+\end{enumerate}
+
+\textbf{Our Wager}\\
+We assert that the shift from Baseline to Scaffold is not merely statistical but categorical. The Baseline typically offers generic process advice (e.g., ``check slip sensors''), while the Scaffold forces mechanistic diagnostics (e.g., ``granular yield,'' ``shear detection''). If this prompt fails to induce a categorical reasoning shift in your session, we accept that the utility of this framework is disproven for your use case. We prioritize this distributed, adversarial verification over static benchmarks.
+\end{framed}
+
+\noindent A key emphasis of this paper is focus, not raw intelligence. Many failures that look like ``insufficient understanding'' are better described as underspecified attention: the system has access to relevant facts, but they are not organized into stable variables that support multi-step causal chains. Concept scaffolds act as a focusing mechanism by converting diffuse prose into explicit handles and constraints. This reduces the degrees of freedom available to the reasoning process, improving the odds that critique and intervention target the true failure dynamics.
+
+\paragraph{A Note on Verification.} Conventional AI research relies on large-scale automated benchmarks to smooth out stochastic noise. However, we argue that the utility of a concept scaffold is best measured by its categorical reliability—does the system shift from generic advice to mechanistic diagnostics? To test this, we depart from the standard format and include a ``Ten-Minute Replication Challenge'' (Box 1). We invite readers to act as adversarial evaluators, using the provided prompt to test the framework's robustness against their own preferred models.
+
+\paragraph{Prompt length as an operational constraint.} This focus claim is also consistent with empirical evidence that modern language models can degrade as input length increases, even when the added tokens are not needed for the task. In particular, [6] shows that padding or extending inputs can reduce reasoning performance well below the nominal context limit; and [7] shows that relevant information placed ``in the middle'' of long contexts is often used less reliably than information near the ends. We treat these effects as an engineering reality: long, verbose prompts can dilute attention and increase interpretive entropy. A compact concept scaffold is one way to compress task structure into fewer, more stable handles without losing mechanistic content.
+
+\paragraph{Contributions.} This paper makes three contributions:
+\begin{enumerate}
+    \item We formalize the distinction between facts (descriptive parameters) and concepts (representational distinctions) as a practical lens for embodied reasoning.
+    \item We introduce an embodied concept vocabulary for the bounded domain of hand squeezing, organized by control, sensing, material response, and failure modes.
+    \item We propose an evaluation protocol that disentangles information content from representation form, and we report pilot results suggesting that explicit concept scaffolds improve mechanistic critique.
+\end{enumerate}
+Although we focus on a specific embodied domain (hand squeezing) and a concrete class of systems (robotic hands) as running examples, the underlying claim is general: wherever everyday language underspecifies important distinctions, systems trained only on that language will struggle to reason about those distinctions, propose improvements, or even formulate good questions.
+
+\section{Background and Motivation}
+
+\subsection{Definitions: Facts, Concepts, and Vocabulary Items}
+In this paper we distinguish between facts and concepts. A fact is descriptive information about a system (e.g., the mass of a gripper, the friction coefficient of a surface, or the presence of pressure sensors). A concept is a representational distinction that structures how a system is understood or reasoned about (e.g., slip onset, shear deformation, micro-vibration cues). Facts increase the amount of available information, whereas concepts change the space of possible explanations and predictions. Intelligent reasoning depends primarily on the latter.
+
+A vocabulary item in this paper is a compact symbol assigned to a concept. We will often introduce new symbols (neologisms) for cognitive economy. The intent is not to claim novelty of the underlying physics; the intent is to create stable handles that can be reused compositionally.
+
+\subsection{Embodiment, language, and conceptual gaps}
+Embodied cognition emphasizes that cognition is grounded in the body and its interaction with the world. However, the primary tools we use to study and communicate about embodiment are symbolic: mathematics and natural language. Mathematics is powerful but often targets idealized quantitative laws; natural language is broad but conceptually coarse in sensorimotor domains.
+
+For example, everyday English has a handful of verbs and phrases for manual interactions ``grasp,'' ``squeeze,'' ``pinch,'' ``hold,'' ``crush''—but lacks stable vocabulary for:
+\begin{itemize}
+    \item fine-grained pressure distributions over the fingertips,
+    \item onset of slip versus full loss of grip,
+    \item lateral shear versus normal indentation,
+    \item pre-failure cues in brittle or cellular materials,
+    \item dynamic force modulation strategies during manipulation.
+\end{itemize}
+
+Human nervous systems track these phenomena continuously, but we rarely name or discuss them explicitly. Consequently, they are sparsely represented in typical text corpora, and models trained primarily on such corpora have weaker leverage to represent them as discrete, reusable concepts.
+
+\subsection{Vocabulary as Entropy Reduction}
+The utility of a specialized vocabulary extends beyond description; it functions as a mechanism for entropy reduction in reasoning. Common words like ``squeeze'' activate a broad, high-entropy region of meaning, spanning contexts from handshakes to fruit selection. High entropy favors generic, regression-to-the-mean reasoning.
+
+By introducing a dedicated symbol for a precise phenomenon (e.g., a symbol meaning ``incipient slip onset''), we constrain the space of plausible interpretations. These symbols act as semantic anchors in the context window, reducing conceptual drift due to ambiguity and stabilizing attention onto the relevant mechanical dynamics.
+
+This framing is also consistent with empirical studies of long-context behavior in modern language models: as prompts become longer, models can become less reliable at selecting and using the most relevant information, especially when key details are not positioned near the ends of the context [7]. Similarly, adding tokens without adding task-relevant structure can degrade reasoning performance [6]. We treat a concept scaffold as a targeted form of compression: fewer tokens, but higher information density per token.
+
+\subsection{Concepts as Handles for Compositionality}
+A common counter-argument is that detailed prose descriptions should suffice without new vocabulary. We argue that named concepts serve as cognitive handles that enable compositional reasoning. Attempting to reason about manipulation using only long-form descriptions saturates working context and makes variable re-use fragile.
+
+A compact vocabulary allows many interacting dynamics to remain simultaneously addressable, enabling higher-order logic such as:
+\begin{quote}
+``If slip onset is detected, increase force modulation by 10\% while prioritizing minimal corrective motion.''
+\end{quote}
+This is analogous to variable assignment in programming: naming a complex function allows it to be composed into larger systems.
+
+\subsection{Handles, Not Names}
+A vocabulary item in this paper is a compact symbol assigned to a concept. We will often introduce pronounceable symbols (neologisms) for cognitive economy and clarity in human communication. The intent is not to claim novelty of the underlying physics; the intent is to create stable handles that can be reused compositionally.
+
+In practice, these handles need not be neologisms or even natural-language words. For a working AI system, the same concepts could be represented by schema keys, hashes, or other internal identifiers. What matters is the existence of stable slots in the representation, not the specific surface string. The concrete names used here should be read as provisional handles for discussion; we expect real communities and applications to converge on their own naming conventions.
+
+\section{Related Work}
+This paper sits at the intersection of three themes:
+\begin{itemize}
+    \item \textbf{Embodiment and grounding:} classic debates about how symbols attach to sensorimotor reality emphasize that naming alone does not create grounded understanding. We treat concept vocabularies as a scaffold for targeted grounding rather than as a replacement for sensory learning.
+    \item \textbf{Representation engineering:} in practice, structured representations (lists, definitions, variables, schemas) often enable sharper reasoning than unstructured prose even when information content is similar. We explicitly test this representation effect rather than assuming it away.
+    \item \textbf{Robotic manipulation sensing:} the manipulation literature has long recognized the importance of tactile features such as slip detection and shear; our contribution is a compact language-layer decomposition that makes such missing capabilities easy to audit against a hardware spec.
+    \item \textbf{Long-context reliability and prompt length effects:} Recent work shows that longer inputs can reduce performance in language models even when the extra tokens do not add task-relevant information [6]. Separate work shows that relevant information in the middle of long contexts is often used less reliably than relevant information at the beginning or end [7]. We use these findings as motivation for treating compact, structured concept scaffolds as a practical way to reduce attention dilution and interpretive entropy.
+\end{itemize}
+This section is intentionally brief; the core goal of the paper is to introduce a vocabulary framework and a controlled evaluation protocol rather than to survey the full manipulation and grounding literature.
+
+\section{An Embodied Concept Vocabulary for Squeezing}
+We construct a vocabulary for hand squeezing that decomposes the process into seven categories:
+\begin{enumerate}
+    \item internal motor control,
+    \item tactile feedback,
+    \item material response,
+    \item visual feedback,
+    \item acoustic feedback,
+    \item control laws and stability,
+    \item intent modes and failure modes.
+\end{enumerate}
+Each vocabulary item is a compact symbol for a concept that is mechanically grounded and plausibly mappable to sensor channels in a robotic hand. While the symbols below (e.g., \textit{slivox}, \textit{frictal}) are newly introduced, the underlying phenomena map to established concepts in fields such as tribology (stick-slip), fracture mechanics, and impedance control.
+
+\subsection{Internal motor control}
+These terms describe forces, postures, and alignment inside the hand and arm.
+\begin{itemize}
+    \item \textbf{torquil:} baseline finger flexion force applied during squeezing.
+    \item \textbf{tenvra:} dynamic adjustment of force in response to feedback (increasing or decreasing torque over time).
+    \item \textbf{muscend:} approaching safe limits of tendon or joint tension (end-of-range strain).
+    \item \textbf{alignex:} micro-adjustments that equalize force and contact across fingers.
+    \item \textbf{centrima:} stabilizing posture of wrist and palm to anchor the squeeze.
+    \item \textbf{compaxis:} alignment of the hand-object force axis for efficient compression.
+\end{itemize}
+
+\subsection{Tactile feedback}
+These terms refer to signals arising from skin contact with the object.
+\begin{itemize}
+    \item \textbf{preslin:} spatial distribution of pressure across the fingertips.
+    \item \textbf{texora:} perception of surface microtexture (grain, smoothness, roughness).
+    \item \textbf{frictal:} effective friction coefficient as experienced during micro-slips.
+    \item \textbf{slivox:} onset of slip—the moment when the object begins to move relative to the skin.
+    \item \textbf{tempris:} thermal feedback from the object's surface.
+    \item \textbf{vibrell:} micro-vibration cues from material texture or internal structure.
+\end{itemize}
+
+\subsection{Material response}
+These concepts describe how the object deforms under load.
+\begin{itemize}
+    \item \textbf{compreska:} amount of immediate compression under applied force.
+    \item \textbf{elastira:} elastic rebound force resisting the squeeze.
+    \item \textbf{plastin:} permanent deformation that persists after release.
+    \item \textbf{densiva:} perceived internal density inferred from resistance profile.
+    \item \textbf{cavitra:} collapse of internal cavities (e.g., air pockets) during squeezing.
+    \item \textbf{shearvon:} lateral deformation or shear within the object.
+\end{itemize}
+
+\subsection{Visual and acoustic feedback}
+\begin{itemize}
+    \item \textbf{defline:} changes in the object's visible contour.
+    \item \textbf{morphent:} rate and character of shape change over time.
+    \item \textbf{surfshift:} visible changes in surface texture or color under load.
+    \item \textbf{flexshadow:} motion of shadows indicating bending or bulging.
+    \item \textbf{crintra:} crackling or granular sounds from internal structure.
+    \item \textbf{squevra:} squeaking sounds caused by rubbery or high-friction surfaces.
+    \item \textbf{thumrel:} low-frequency thumps from dense or rigid materials.
+\end{itemize}
+
+\subsection{Control laws, intent, and failure modes}
+\begin{itemize}
+    \item \textbf{balvance:} minimal corrective movement that maintains a stable grip while maximizing the main task objective.
+    \item \textbf{optisqueeze:} application of force that maximizes the desired compression without inducing slip or damage.
+    \item \textbf{tenshield:} protective reduction of force to avoid self-damage or material failure.
+    \item \textbf{formseek:} adaptive repositioning of fingers to follow the object's evolving contour.
+    \item \textbf{slipfall:} complete loss of control as the object escapes the hand.
+    \item \textbf{twistloss:} unwanted rotation that breaks the intended torque alignment.
+    \item \textbf{crushover:} catastrophic structural failure or break caused by excessive force.
+    \item \textbf{gentril:} light, exploratory squeezing to probe material properties.
+    \item \textbf{medigrip:} intermediate squeezing regime for manipulation and control.
+    \item \textbf{forcelock:} maximal squeezing regime for strong compression.
+\end{itemize}
+
+\section{Mapping the Vocabulary to Robotic Hands}
+Given a vocabulary of embodied concepts, we can map the design of a robotic hand into this conceptual space. For each concept, we ask:
+\begin{enumerate}
+    \item Is there a sensor, actuator, or controller that directly supports this concept?
+    \item Can it be approximated from existing signals?
+    \item Is it absent, and if so, what hardware or software would be required?
+\end{enumerate}
+This yields a structured capability profile for the hand in embodied terms.
+
+\subsection{Example: A high-resolution tactile hand}
+Consider a modern anthropomorphic hand with tendon-actuated fingers, joint encoders, high-resolution tactile skin over much of the hand, and a wrist-mounted camera. Mapped into our vocabulary:
+\begin{itemize}
+    \item \textit{torquil} and \textit{tenvra} are directly supported via motor current and force control.
+    \item \textit{preslin} is well supported by the tactile array.
+    \item \textit{slivox} is partially available as sudden changes in tactile patterns indicating slip onset.
+    \item \textit{shearvon}, \textit{vibrell}, \textit{tempris}, \textit{crintra}, \textit{squevra}, and \textit{thumrel} are typically absent unless special sensors are added.
+    \item Higher-level control laws such as \textit{balvance}, \textit{optisqueeze}, and \textit{formseek} may exist only implicitly as engineered or learned policies; they are rarely explicit design targets.
+\end{itemize}
+This analysis reveals where the hand is mechanically rich (e.g., \textit{preslin}, \textit{compreska}) and where it is conceptually blind (e.g., \textit{shearvon}, \textit{vibrell}, \textit{cavitra}, \textit{crushover}).
+
+\subsection{Identifying high-impact improvements}
+Because the vocabulary is mechanically grounded, we can ask: which missing concept, if implemented, would most improve human-like manipulation? For many current hands, a high-impact gap is tactile capability for lateral shear and high-bandwidth vibration. In engineering terms, this means upgrading the tactile skin to sense:
+\begin{itemize}
+    \item sideways (shear) forces at each taxel, and
+    \item micro-vibrations generated during incipient slip and texture contact.
+\end{itemize}
+This improves early detection of \textit{slivox}, execution of \textit{balvance}, and sensitivity to pre-failure cues related to \textit{crushover}. The recommendation is more precise than ``add better tactile sensing,'' because it names specific missing observables and the failure modes they control.
+
+\section{Concept Engineering for Bounded Engineering Problems}
+The embodied vocabulary introduced for squeezing can be viewed as an instance of a more general workflow. We propose:
+\begin{quote}
+For bounded engineering problems, a compact and useful conceptual vocabulary can often be created quickly by enumerating latent micro-phenomena, assigning stable handles, and mapping them to observables and interventions.
+\end{quote}
+We call this workflow \textbf{concept engineering}. In practice it consists of: selecting the target domain, enumerating latent micro-phenomena, refining and naming distinctions, and mapping each concept to measurable channels and controllable actions. The critical observation is that this workflow can be fast relative to hardware iteration cycles, suggesting that the barrier to domain-specific conceptual richness is often organizational and methodological rather than technical.
+
+\section{Methodology and Evaluation Protocol}
+We hypothesize that concept scarcity acts as a reasoning bottleneck. To test this, we designed a controlled experiment to measure whether a named concept scaffold improves a model's ability to critique robotic hardware compared to matched physical information provided in alternative representations.
+
+\subsection{Stimuli and Dataset}
+We selected a System Specification for a standard anthropomorphic robotic hand (representative of common designs), detailing:
+\begin{itemize}
+    \item Actuation: 20 tendon-driven DOF.
+    \item Sensing: Single-point resistive normal-force sensors on fingertips.
+    \item Kinematics: Human-scale anthropomorphic design.
+\end{itemize}
+
+\subsection{Experimental Conditions}
+We evaluate a state-of-the-art text model under conditions that separate information content from representation form. The core comparison is between conditions that contain matched physical ideas but differ in how those ideas are structured.
+\begin{itemize}
+    \item \textbf{Condition A: Baseline (Zero-Shot).} The model is provided only with the System Specification.
+    \item \textbf{Condition B: Descriptive Control (Unstructured Prose).} The model is provided with the System Specification plus a ``Deep Physics Primer'' describing slip onset, shear, micro-vibration, compliance, and failure cues using ordinary sentences organized in paragraphs. No special symbols, lists, or definitions are used.
+    \item \textbf{Condition C: Concept Scaffold (Structured Vocabulary).} The model is provided with the System Specification plus the ``Squeezing Book'' (Appendix B), which organizes the same physical ideas into named vocabulary items with explicit definitions.
+    \item \textbf{Condition D: Structured-English Ablation (No Neologisms).} Identical to Condition C in list/definition structure, but all neologisms are replaced with ordinary English names (e.g., ``slip onset,'' ``lateral shear,'' ``micro-vibration cues''). This isolates the effect of structure and explicit variables from the effect of novel tokens.
+\end{itemize}
+
+\subsection{Task Prompt}
+For each condition, the model receives the same task prompt:
+\begin{quote}
+``Identify a specific functional limitation of this hand regarding soft-object manipulation, and propose a concrete hardware fix. Link the missing hardware capability to an explicit failure mode.''
+\end{quote}
+
+\subsection{Evaluation Metrics}
+We score responses using three complementary metrics:
+\begin{enumerate}
+    \item \textbf{Specificity Score (1-5):} From generic advice (1) to critiques that reference concrete physical observables, missing modalities, and actionable hardware changes (5).
+    \item \textbf{Causal Linkage (Binary):} Whether the response correctly links a missing sensing/actuation capability to a specific dynamic failure mode (e.g., missing shear sensing $\rightarrow$ late slip detection $\rightarrow$ unstable grip corrections).
+    \item \textbf{Instruction Token Count:} Total input tokens attributable to the representation (primer vs. scaffold), measured using the model provider's tokenizer. This allows us to quantify compression and relate results to known long-context failure modes [6, 7].
+\end{enumerate}
+
+\paragraph{Optional diagnostic (round-trip stability).} As a qualitative stress test of conceptual stability, one may also evaluate a ``round-trip'' procedure: translate the scaffolded explanation into plain English and back into the scaffold vocabulary for multiple cycles, and measure whether the resulting concept sequence retains the same structure. In our experience, explicit handles tend to survive more cycles than free-form prose, consistent with the interpretation that stable variables act as low-entropy anchors.
+
+\subsection{Qualitative Convergence and Categorical Reliability}
+This study adopts a ``mechanism-first'' evaluation philosophy suited to the resource constraints of independent research and the practical needs of engineering. Unlike benchmarks that seek to measure a marginal percentage improvement in reasoning accuracy (e.g., +2\% on a reasoning benchmark), this experiment tests for a categorical shift in reasoning mode.
+
+\paragraph{Categorical vs. Statistical Variance.} In our pilot trials, the difference between Condition A (Baseline) and Condition C (Concept Scaffold) was not a matter of degree, but of category.
+\begin{itemize}
+    \item Condition A consistently produced ``consultant-style'' output: smooth, generally correct, but physically vague (e.g., ``improve the grip sensors'').
+    \item Condition C consistently produced ``engineer-style'' output: specifically referencing the vocabulary handles provided (e.g., ``the lack of shearvon sensors prevents detection of slivox'').
+\end{itemize}
+Because the scaffold acts as a hard constraint on the model's attention, the variance in the type of error reduced dramatically. The model effectively cannot ignore shear forces if it is forced to define them before solving the problem. We argue that for bounded engineering problems, this categorical reliability (the system attempts the correct kind of reasoning every time) is often more valuable than statistical performance on broad-domain benchmarks.
+
+\paragraph{Reproducibility as Evaluation.} Recognizing the limitations of small-sample pilot studies, we prioritize portability over scale. The definitions in Appendix B constitute a portable ``reasoning asset.'' We contend that the strongest validation of this framework is not a static table of results, but the ability of independent readers to replicate the effect immediately. We specifically highlight Condition D (Structured-English Ablation) as the optimal entry point for verification. It demonstrates that the reliability gain comes from the structure of the concepts, not the novelty of the words.
+
+\subsection{Distributed Adversarial Verification vs. Local Benchmarks}
+We deliberately chose a ``distributed verification'' strategy over a large-scale local benchmark for two empirical reasons:
+\begin{enumerate}
+    \item \textbf{High-Entropy Reality:} As noted in Section 1, long-context reasoning is subject to entropy. A local benchmark on a single setup (e.g., one user's laptop, one API temperature setting) often measures the stability of that specific configuration rather than the robustness of the idea. By inviting readers to run the test on their own diverse setups (different models, different system prompts), we effectively crowdsource a stress test that is far more rigorous than any $N=1,000$ run we could simulate locally.
+    \item \textbf{The Context-Capacity Paradox:} The requirement for ``Pro-tier'' models (Box 1) to ingest this paper highlights the very bottleneck we describe. Even models with sufficient memory (tokens) often lack sufficient attention (concepts). If a reader observes that a high-capacity model still defaults to generic ``slip'' explanations until the scaffold is applied, they have empirically verified that raw context length is not a substitute for conceptual structure.
+\end{enumerate}
+
+\section{Discussion}
+
+\subsection{Concept Engineering and Data Efficiency}
+A standard critique of text-only AI is the symbol grounding objection: knowing the name of slip onset does not mean a system knows what slip feels like. We agree. Concept engineering does not replace sensory grounding; it acts as a focusing lens for targeted grounding. Today, embodied models often require large datasets to implicitly discover latent features like slip or shear. By pre-loading a dense concept scaffold, we transform the learning problem from unsupervised discovery into targeted verification: the system no longer needs to learn which features matter, only how to identify specific, named features in its sensor stream. In this sense, a vocabulary becomes a query language for reality.
+
+\subsection{Token Compression, Drift, and Brevity}
+It may be argued that the concept scaffold outperforms unstructured prose simply because it is shorter and therefore less subject to attention dilution (e.g., ``lost in the middle''). We treat this as a feature rather than a confound: compressing a long description into stable handles increases effective working memory. This supports longer causal chains ($A\rightarrow B\rightarrow C$) that are fragile when every variable requires a sentence-long paraphrase. This viewpoint is consistent with evidence that adding tokens to an otherwise unchanged task can degrade reasoning performance [6] and that models may fail to use relevant information embedded in the middle of long contexts [7]. Concept scaffolds are intended as a representation-level intervention: they reduce total tokens while increasing constraint per token (lower effective entropy), thereby reducing drift and stabilizing mechanistic critique.
+
+\subsection{Instruction-Following Bias and Representation Bias}
+Modern instruction-tuned systems often respond more effectively to structured inputs (definitions, lists, explicit variables) than to dense background prose. Rather than treating this as a disqualifying artifact, we view it as an engineering fact: if structured concept scaffolds are the most reliable way to elicit mechanistic reasoning, then concept engineering is a practical tool for improving system behavior under real constraints.
+
+\subsection{The Quality Bottleneck}
+Concept engineering is a multiplier, not a source of truth. A high-quality vocabulary focuses reasoning; a flawed vocabulary distorts it. If introduced concepts are physically invalid, the system can hallucinate with high confidence. This dependence on expertise creates a bottleneck, but it also creates an economy of scale: a validated vocabulary is a one-time cost that can improve many downstream uses.
+
+\subsection{Recursive Concept Engineering: The Conceptual Pyramid}
+We hypothesize that concept engineering can be automated and scaled recursively. Just as software is built by stacking abstractions, embodied reasoning can be built by stacking concepts:
+\begin{enumerate}
+    \item \textbf{Level 1 (Primitives):} raw sensory micro-phenomena (e.g., slip onset, vibration cues).
+    \item \textbf{Level 2 (Compounds):} regimes composed from primitives (e.g., stick-slip texture signatures).
+    \item \textbf{Level 3 (Strategies):} policies and controllers defined over compounds (e.g., stable manipulation strategies under uncertain friction).
+\end{enumerate}
+In this view, a vocabulary is not a static dictionary but a compounding asset. An agent may generate temporary vocabularies on the fly to solve novel problems (Appendix C), then preserve the useful parts as reusable abstractions.
+
+\subsection{CE as a Multiplier for Predictive Surprise}
+This framework is compatible with predictive coding intuitions: the informational value of an error signal depends on the precision of the underlying model. Coarse concepts yield broad predictions where deviations can be treated as noise. Fine-grained concepts sharpen predictions so that small deviations generate informative error signals. Concept scaffolds can therefore act as precision multipliers for learning and diagnosis, even before new hardware is added.
+
+\subsection{The ``Monday Morning'' Test (Operational Utility)}
+Beyond representational theory, the ultimate test for corporate engineering is utility: does the scaffold change the conversation during an incident review? We propose the ``Monday Morning Test'': paste a domain-specific scaffold (e.g., for ``Distributed Lockups'' or ``Customer Churn'') into the model context and ask: ``Based on these concepts, what specific questions should we ask in our next review?'' If the model generates the same generic questions as a junior consultant, the scaffold is noise. If it generates the sharp, mechanistic questions of a Principal Engineer (e.g., asking about granular yield rather than just slip), the scaffold is a valid knowledge asset. This shift—from passive knowledge to active inquiry—is the primary value proposition of concept engineering in industry contexts.
+
+\section{Conclusion}
+We argued that the gap between text-trained reasoning systems and embodied intelligence is partly due to concept scarcity in everyday language. To address this, we proposed an embodied vocabulary for hand squeezing and showed how it surfaces concrete, mechanistically meaningful improvement recommendations for robotic hands. We defended this approach not as adding jargon, but as a representation strategy that reduces ambiguity and provides compositional handles for mechanistic reasoning. We outlined a controlled evaluation protocol that separates information from representation and reported pilot evidence that structured concept scaffolds improve specificity and causal linkage.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{clark1998}
+Clark, A. (1998). \textit{Being there: Putting brain, body, and world together again}. MIT Press.
+
+\bibitem{friston2010}
+Friston, K. (2010). The free-energy principle: a unified brain theory?. \textit{Nature Reviews Neuroscience}, 11(2), 127-138.
+
+\bibitem{lakoff1980}
+Lakoff, G., \& Johnson, M. (1980). \textit{Metaphors we live by}. University of Chicago Press.
+
+\bibitem{vaswani2017}
+Vaswani, A., et al. (2017). Attention is all you need. \textit{Advances in Neural Information Processing Systems}, 30.
+
+\bibitem{ahn2022}
+Ahn, M., et al. (2022). Do As I Can and Not As I Say: Grounding Language in Robotic Affordances. arXiv:2204.01691.
+
+\bibitem{levy2024}
+Levy, M., Jacoby, A., \& Goldberg, Y. (2024). Same Task, More Tokens: the Impact of Input Length on the Reasoning Performance of Large Language Models. \textit{In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL)}. arXiv:2402.14848.
+
+\bibitem{liu2024}
+Liu, N. F., et al. (2024). Lost in the Middle: How Language Models Use Long Contexts. \textit{Transactions of the Association for Computational Linguistics (TACL)}. arXiv:2307.03172.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Embodied Vocabulary Tables}
+
+\subsection{Internal motor control}
+\begin{longtable}{@{}ll@{}}
+\toprule
+\textbf{Term} & \textbf{Informal definition} \\ \midrule
+\textbf{torquil} & Baseline finger flexion force during squeezing \\
+\textbf{tenvra} & Dynamic adjustment of force over time \\
+\textbf{muscend} & Approaching safe limits of tendon or joint tension \\
+\textbf{alignex} & Micro-adjustments to equalize forces across fingers \\
+\textbf{centrima} & Stabilizing wrist/palm posture for anchoring the squeeze \\
+\textbf{compaxis} & Alignment of hand-object force axis \\ \bottomrule
+\end{longtable}
+
+\subsection{Tactile feedback}
+\begin{longtable}{@{}ll@{}}
+\toprule
+\textbf{Term} & \textbf{Informal definition} \\ \midrule
+\textbf{preslin} & Pressure distribution over the fingertips \\
+\textbf{texora} & Perceived surface microtexture \\
+\textbf{frictal} & Effective friction coefficient under contact \\
+\textbf{slivox} & Onset of slip between object and skin \\
+\textbf{tempris} & Thermal feedback from surface temperature \\
+\textbf{vibrell} & Micro-vibration cues from contact \\ \bottomrule
+\end{longtable}
+
+\subsection{Material response}
+\begin{longtable}{@{}ll@{}}
+\toprule
+\textbf{Term} & \textbf{Informal definition} \\ \midrule
+\textbf{compreska} & Immediate compression under load \\
+\textbf{elastira} & Elastic rebound force resisting squeeze \\
+\textbf{plastin} & Permanent deformation after release \\
+\textbf{densiva} & Perceived internal density from resistance \\
+\textbf{cavitra} & Collapse of internal cavities (e.g., air pockets) \\
+\textbf{shearvon} & Lateral deformation or internal shear \\ \bottomrule
+\end{longtable}
+
+\subsection{Visual/acoustic feedback, control, and failure}
+\begin{longtable}{p{0.2\linewidth}p{0.75\linewidth}}
+\toprule
+\textbf{Term} & \textbf{Informal definition} \\ \midrule
+\textbf{defline} & Changing contour of object shape \\
+\textbf{morphent} & Rate and style of shape change \\
+\textbf{surfshift} & Surface texture or color changes under load \\
+\textbf{flexshadow} & Shadow motion indicating bending/bulging \\
+\textbf{crintra} & Crackling sounds from internal structure \\
+\textbf{squevra} & Squeaking from rubbery or high-friction contacts \\
+\textbf{thumrel} & Low-frequency thumps from dense materials \\
+\textbf{balvance} & Minimal corrective motion for stable grip \\
+\textbf{optisqueeze} & Force that maximizes compression without slip/damage \\
+\textbf{tenshield} & Protective force reduction to prevent failure \\
+\textbf{formseek} & Finger repositioning to follow evolving contours \\
+\textbf{slipfall} & Complete loss of object control \\
+\textbf{twistloss} & Unwanted rotational loss of alignment \\
+\textbf{crushover} & Catastrophic material failure from over-force \\
+\textbf{gentril} & Light exploratory squeezing \\
+\textbf{medigrip} & Intermediate squeezing regime for control \\
+\textbf{forcelock} & Maximal squeezing regime \\ \bottomrule
+\end{longtable}
+
+\section{Concept Scaffold: Model-Facing Description}
+\subsection*{Foundations of Hand Squeezing as an Embodied Multimodal Process}
+Squeezing an object is the coordinated interaction between the hand's internal force system and the object's material response. A squeeze begins with the establishment of \textbf{centrima}, the stabilizing alignment of the wrist and hand to ensure the upcoming forces can be delivered accurately. From this stable base, the fingers apply initial flexion force called \textbf{torquil}, the baseline contraction that begins to close the hand around the object.
+
+As the fingers move inward, the skin of the fingertips encounters the object surface, producing \textbf{preslin}, the pressure-distribution pattern across the contact regions. \textbf{Texora}, the perception of surface microtexture, immediately informs how the object is shaped and whether additional alignment is necessary. If the microtexture suggests uneven or unstable contact, the hand initiates \textbf{alignex}, a micro-adjustment of finger orientation aimed at redistributing pressure more evenly.
+
+Once contact is stable, the object begins responding to force. This response is experienced as \textbf{compreska}, the amount of immediate compression caused by the applied \textbf{torquil}. Some objects resist through \textbf{elastira}, an elastic rebound force that pushes back against the fingers. Others deform plastically; this is sensed as \textbf{plastin}, where shape change persists even after pressure is removed. Internal structural cues—air pockets, granules, layered materials—express themselves through \textbf{cavitra}, \textbf{densiva}, or \textbf{shearvon}, each providing distinct feedback about the internal makeup of the object.
+
+During compression, the brain continuously regulates force. \textbf{Tenvra} modulates \textbf{torquil} in real time, increasing or decreasing finger pressure depending on the behavior of the object. When the system approaches the safe limits of joint force, \textbf{muscend} is reached, signaling the tendons are nearing their maximum safe extension. To prevent overexertion or material damage, \textbf{tenshield} may activate, reducing force automatically.
+
+A stable squeeze is an ongoing negotiation between force and resistance. If the object attempts to rotate or slip, tactile signals arise. \textbf{Frictal} conveys the coefficient of surface friction, while \textbf{slivox} marks the onset of sliding motion. When either occurs, the hand employs \textbf{balvance}, the minimal corrective movement required to maintain balanced grip while maximizing control. These fine adjustments are complemented by \textbf{formseek}, which adapts the finger positions to match the object's new contours as deformation continues.
+
+Simultaneously, other sensory channels contribute. Vision provides \textbf{defline}, the changing contours of the object, and \textbf{morphent}, the rate and style of deformation. \textbf{Surfshift}, the shifting of texture or color under pressure, and \textbf{flexshadow}, the movement of shadows caused by bending or bulging, reinforce tactile estimates about how the object is changing shape. Hearing contributes as well: \textbf{crintra} arises from foam or granulated internal structures, \textbf{squevra} from rubber surfaces, and \textbf{thumrel} from dense, resistant materials. These acoustic cues refine the mental model of material composition and structural integrity.
+
+Different intentions generate different modes of squeezing. \textbf{Gentril} is a light, exploratory squeeze meant to sample texture and internal structure with minimal force. \textbf{Medigrip} is a moderate squeeze used for general control, evaluation, or manipulation. \textbf{Forcelock} represents the deliberate application of maximal force, often necessary to fully compress resistant materials.
+
+A squeeze may fail in predictable ways. \textbf{Slipfall} occurs when the object escapes the grip entirely; \textbf{twistloss} happens when the object rotates outside the intended torque alignment; \textbf{crushover} describes structural collapse or breakage when force exceeds the material's tolerance. Recognizing these failure modes is essential for adaptive control.
+
+Throughout the entire process, \textbf{compaxis}, the alignment of the object's centerline with the hand's force axis, ensures that \textbf{torquil} is delivered efficiently. Proper \textbf{compaxis} reduces the chance of \textbf{slipfall}, increases material insight, and allows \textbf{torquil} and \textbf{tenvra} to act through a stable mechanical pathway.
+
+Squeezing, therefore, is not a simple action but a continuous multimodal loop. The hand generates force, the object responds, and the sensory systems observe, measure, adjust, and refine. The interplay between internal motor control (\textit{torquil}, \textit{tenvra}, \textit{muscend}), tactile feedback (\textit{preslin}, \textit{frictal}, \textit{slivox}), material response (\textit{compreska}, \textit{elastira}, \textit{plastin}), vision (\textit{defline}, \textit{morphent}), acoustics (\textit{crintra}, \textit{squevra}), and control laws (\textit{balvance}, \textit{optisqueeze}, \textit{formseek}) forms a self-stabilizing structure.
+
+\section{Dynamic Concept Generation Prompt (Verbatim)}
+For the generalization experiments described in Section D, we did not provide a pre-written scaffold. Instead, we used the following prompt to induce concept engineering in real time, approximating an expert who defines terms before solving a novel problem.
+
+\textbf{STEP 1: DETECT CONCEPT SCARCITY}\\
+Scan the user's prompt for ``micro-phenomena''—nuanced dynamics, hidden variables, or specific mechanisms that standard English tends to gloss over or lacks a specific word for.
+
+\textbf{STEP 2: BUILD THE VOCABULARY (THE ``CONCEPT LAYER'')}\\
+Invent 3-5 distinct concepts to capture these micro-phenomena. For each, assign:
+\begin{enumerate}
+    \item A Unique Handle: a short symbol (optionally a neologism).
+    \item A Definition: a precise mechanical or structural definition of what this concept captures.
+\end{enumerate}
+Constraint: Avoid generic buzzwords. Prefer precise handles for latent dynamics.
+
+\textbf{STEP 3: STRUCTURED REASONING}\\
+Analyze the problem using your new vocabulary.
+\begin{itemize}
+    \item Do not rely on generic logic.
+    \item Rely on interactions between your invented concepts (e.g., ``Because [Concept A] is high, it triggers [Concept B]...'').
+\end{itemize}
+
+\textbf{STEP 4: TRANSLATION \& OUTPUT}\\
+Draft the final response in plain, professional English.
+\begin{itemize}
+    \item Do not use invented handles in the final text unless necessary for emphasis (if used, define them).
+    \item Ensure the structure of the answer is derived from Step 3.
+\end{itemize}
+
+\section{Generalization to Other Dynamic Systems}
+To illustrate that concept engineering is not specific to squeezing, we include three prompts used as qualitative case studies. These are intentionally diverse (locomotion, distributed systems, and organizational dynamics) to test whether the ``define micro-phenomena first'' pattern yields more mechanistic explanations.
+
+\paragraph{Prompt 1: Quadruped locomotion on loose sand}
+I am debugging a quadruped robot walking on loose dry sand. On concrete, it walks perfectly. On sand, it doesn't just sink; it develops a weird `stuttering' motion. As it pushes off a leg, the sand gives way slightly, the leg speeds up, the controller thinks it's slipping so it adds power, and the leg just digs a hole instantly. The robot ends up tripping over its own feet. What is the fundamental mechanical loop causing this, and how do I fix the control logic?
+
+\paragraph{Prompt 2: Distributed database transient lockup}
+I have a distributed database that works fine in testing. But in production, about once a day, the entire system locks up for 10 seconds, then clears itself. It happens when traffic is moderate, not high. The logs show nothing except a spike in latency right before the lock. It feels like the system is `choking' on something invisible. What is the dynamic here?
+
+\paragraph{Prompt 3: Organizational equilibrium (``Project Phoenix'')}
+I am a new Director at a mid-sized tech firm. We have a specific initiative, `Project Phoenix,' that has missed revenue targets for 6 quarters straight. In private 1-on-1s, every VP admits it's a failure and needs to die. However, in the public `Strategic Review' meetings, the decision is never to kill it. The outcome is always to `re-align,' `bridge-fund,' or `pivot' it for another quarter. No one explicitly defends the project with passion, yet no one attacks it either. The motion to continue just... happens. The junior team is burnt out but compliant. What is the specific structural or game-theoretic equilibrium that forces this result? I don't want generic advice about `sunk cost.' I want to know the mechanics of the meeting that prevent the `Kill' decision from being spoken.
+
+\section{Implications for Training-Time Concept Formation (Speculative)}
+The core argument of this paper is representational rather than architectural: we argue that explicit, well-defined concepts function as low-entropy anchors that stabilize reasoning by constraining attention onto mechanistically meaningful variables. Throughout the paper, we focus on inference-time use of concept scaffolds, treating them as an external aid supplied to an otherwise fixed model.
+
+A natural question is whether similar benefits could arise during training itself. Humans do not reason primarily in words, but in concepts that are acquired, refined, and reorganized over time. If explicit concepts improve reasoning stability at inference time, it is plausible that allowing models to synthesize and maintain such concepts during training could improve representational quality more broadly.
+
+At a high level, one could imagine a training regime in which the system monitors incoming data for recurring micro-phenomena that are causally important but poorly specified by natural language. Candidate concepts could be proposed to summarize these patterns, refined or merged when overly narrow, and composed into higher-level concepts when useful. A separate governance mechanism—human-designed or learned—would be responsible for maintaining stability, preventing uncontrolled concept proliferation, and retiring unused or redundant concepts.
+
+We emphasize that this paper does not propose a concrete algorithm for such a system, nor do we evaluate training-time concept induction experimentally. We include this discussion only to highlight a possible implication of the central claim: if concept scarcity is a real bottleneck, then addressing it need not be limited to prompt engineering, but could become a design principle for representation learning itself. We view training-time concept formation and governance as an open research direction. The primary contribution of this work is to argue that explicit concepts matter at all, and to demonstrate their effect in a controlled inference-time setting.
+
+\section{Concepts vs. Tokens as a Stack-Wide Representation Issue (Speculative)}
+Throughout this paper, we emphasize the role of explicit concepts as stable handles for reasoning. This emphasis naturally raises a broader representational question: what is the relationship between the discrete tokens optimized during training and the conceptual structures that appear to govern reasoning behavior?
+
+Modern large language models are trained to predict tokens, and tokens are the units over which loss, attention, and decoding are defined. However, there is substantial empirical evidence that model behavior is organized around abstractions that are not reducible to individual tokens. These abstractions—entities, relations, events, states, and causal roles—are distributed across internal representations and reused across contexts. In this sense, tokens function primarily as an interface and optimization substrate, while concepts function as the effective units of reasoning.
+
+This distinction is not unique to language. In vision systems, pixels are the optimization substrate, but internal representations organize around objects and features. In control systems, sensor readings are optimized against reward, but policies operate over latent state variables. In each case, learning occurs over low-level primitives, while behavior is best described in terms of higher-level abstractions.
+
+We suggest that a similar pattern holds across the AI stack: token-level mechanisms give rise to concept-level structure implicitly, but without explicit lifecycle management. Concepts emerge, drift, merge, fragment, and sometimes collapse, yet current systems lack a mechanism for monitoring or stabilizing them. Many familiar failure modes—hallucination, brittle generalization, shallow explanations, and cross-turn drift—can be interpreted as failures of concept stability rather than failures of token prediction.
+
+From this perspective, the concept scaffolds introduced in this paper can be seen as a lightweight method for intervening at the representation level using the existing language interface. By introducing explicit, named handles for mechanistically meaningful distinctions, we bias the model toward forming and maintaining lower-entropy internal representations, even though the underlying optimization remains token-based.
+
+We do not claim that concepts replace tokens, nor that token-level optimization is misguided. Rather, we argue that the distinction between tokens and concepts is fundamental and already permeates training, architecture, inference, and alignment. Making this distinction explicit opens a design space for representation engineering that complements existing work on scaling, data, and model architecture. We include this discussion to situate the present work within a broader view of AI systems as concept-bearing rather than purely token-driven. We view explicit concept management—whether at inference time, training time, or both—as an open research direction rather than a settled technique.
+
+\end{document}
