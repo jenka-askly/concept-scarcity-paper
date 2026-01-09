@@ -1,0 +1,15 @@
+<!--
+Purpose: Console app project for downloading and converting NFL play-by-play data to JSONL.
+Persists: Writes output data under data/nfl/test-2025-pbp/ (raw JSONL) and data/nfl/test-2025-pbp/meta/ (metadata).
+Security Risks: Downloads remote data via HTTPS; no credentials are handled.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup />
+</Project>
