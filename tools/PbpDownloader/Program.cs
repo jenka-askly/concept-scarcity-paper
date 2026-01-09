@@ -7,7 +7,8 @@ Security Risks: Downloads remote data via HTTPS; no credentials are handled.
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json;
-using Microsoft.VisualBasic.FileIO;
+using CsvHelper;
+using CsvHelper.Configuration;
 
 const int defaultSeason = 2025;
 const string defaultOutputRoot = "data/nfl/test-2025-pbp";
@@ -62,27 +63,27 @@ using (var response = await http.GetAsync(sourceUrl, HttpCompletionOption.Respon
 Console.WriteLine("Converting CSV to JSONL...");
 await using (var fileStream = File.OpenRead(tempDownloadPath))
 await using (var gzip = new GZipStream(fileStream, CompressionMode.Decompress))
+using (var reader = new StreamReader(gzip))
 using (var writer = new StreamWriter(tempJsonlPath))
-using (var parser = new TextFieldParser(gzip))
 {
-    parser.TextFieldType = FieldType.Delimited;
-    parser.SetDelimiters(",");
-    parser.HasFieldsEnclosedInQuotes = true;
-
-    if (parser.EndOfData)
+    var config = new CsvConfiguration(CultureInfo.InvariantCulture)
     {
-        throw new InvalidDataException("CSV is empty.");
-    }
+        BadDataFound = null,
+        MissingFieldFound = null,
+        HeaderValidated = null
+    };
 
-    var headers = parser.ReadFields() ?? Array.Empty<string>();
+    using var csv = new CsvReader(reader, config);
+    csv.Read();
+    csv.ReadHeader();
+    var headers = csv.HeaderRecord ?? Array.Empty<string>();
 
-    while (!parser.EndOfData)
+    while (csv.Read())
     {
-        var fields = parser.ReadFields() ?? Array.Empty<string>();
         var record = new Dictionary<string, string?>(headers.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < headers.Length; i++)
+        foreach (var header in headers)
         {
-            record[headers[i]] = i < fields.Length ? fields[i] : null;
+            record[header] = csv.GetField(header);
         }
 
         var json = JsonSerializer.Serialize(record);
