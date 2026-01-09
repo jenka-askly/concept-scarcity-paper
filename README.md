@@ -6,37 +6,41 @@ Security Risks: None.
 
 **Repository:** concept-scarcity-paper
 
-## Overview
-This repository contains the LaTeX source for the paper “Language as a Bottleneck for Embodied Intelligence: An Embodied Concept Vocabulary for Squeezing and Beyond,” which argues that concept scarcity in natural language is a bottleneck for embodied reasoning and introduces a compact concept scaffold for hand squeezing as a case study.
+## TL;DR / Abstract
+Text-based reasoning systems can describe physical situations but often struggle with embodied tasks because ordinary language lacks stable, fine-grained concepts for manipulation micro-phenomena. A compact concept scaffold for hand squeezing provides explicit handles for tactile cues, material response, and control laws, reducing ambiguity and improving mechanistic reasoning in a bounded domain. The paper proposes a controlled evaluation that holds physical information constant while varying representational form, plus a short verification protocol (Box 1) to reproduce the effect.
 
-## Search Keywords
-concept scarcity, concept scaffold, embodied intelligence, embodied vocabulary, hand squeezing, tactile feedback, manipulation, robotics, representation engineering, attention dilution, mechanistic reasoning
+## Download PDF
+No PDF is checked into this repository. Build the PDF locally using the steps below (or via the GitHub Actions workflow described in `build-paper.ps1`). If you want a downloadable artifact, consider attaching `paper/main.pdf` as a GitHub Release asset after a successful build.
 
-## Paper Metadata
-- **Title:** Language as a Bottleneck for Embodied Intelligence: An Embodied Concept Vocabulary for Squeezing and Beyond
-- **Author:** Joe Yap (Independent Research)
-- **Date:** December 15, 2025
-- **Abstract:** See `paper/main.tex` (Abstract section).
+## Keywords
+concept scarcity; concept scaffolds; LLM reasoning; squeezing; embodied intelligence; tactile feedback; manipulation; representation engineering; attention dilution; mechanistic reasoning
 
-## Repository Layout
-- `paper/main.tex`: Full LaTeX source for the paper, including abstract, vocabulary tables, and appendices.
-- `build-paper.ps1`: GitHub Actions workflow (YAML content) that builds `paper/main.tex` and uploads `paper/main.pdf` as an artifact.
+## Build
+The canonical build steps are captured in `build-paper.ps1` (GitHub Actions workflow definition). To build locally, use a LaTeX toolchain such as TeX Live with `latexmk` or `pdflatex`.
+
+**Windows PowerShell**
+```powershell
+powershell -Command "latexmk -pdf -cd paper/main.tex"
+```
+
+**PowerShell (pwsh)**
+```powershell
+pwsh -Command "latexmk -pdf -cd paper/main.tex"
+```
+
+## Repository layout
+- `paper/main.tex`: Main LaTeX entrypoint (title, abstract, sections, appendices).
+- `paper/`: All paper source files (currently a single `main.tex`).
+- `build-paper.ps1`: GitHub Actions workflow definition for building `paper/main.pdf`.
+- `LICENSE`: License for this repository.
 - `README.md`: This file.
 
-## Build the PDF
-The repository includes a GitHub Actions workflow definition in `build-paper.ps1` that uses `xu-cheng/latex-action@v3` to compile the paper and upload `paper/main.pdf`. To build locally, compile `paper/main.tex` with your preferred LaTeX toolchain.
-
-## Key Concepts (From the Paper)
-- **Concept scarcity:** Natural language lacks stable, fine-grained terms for embodied micro-phenomena.
-- **Concept scaffold:** A compact, structured vocabulary that reduces ambiguity and anchors mechanistic reasoning.
-- **Squeezing vocabulary:** Terms organized around motor control, tactile feedback, material response, and failure modes.
-- **Evaluation protocol:** A lightweight, reader-run verification protocol (“Ten-Minute Replication Challenge”) to test representational shifts.
-
-## Evaluation & Reproduction
-See Box 1 in `paper/main.tex` for a quick verification protocol that compares baseline reasoning vs. scaffolded reasoning using the same physical information.
-
 ## Citation
-If you reference this work, cite the paper title and author as listed in `paper/main.tex`.
-
-## License
-See `LICENSE`.
+```bibtex
+@article{yap2025language,
+  title  = {Language as a Bottleneck for Embodied Intelligence: An Embodied Concept Vocabulary for Squeezing and Beyond},
+  author = {Joe Yap},
+  year   = {2025},
+  url    = {https://github.com/jenka-askly/concept-scarcity-paper}
+}
+```
