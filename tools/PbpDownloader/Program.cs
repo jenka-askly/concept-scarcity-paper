@@ -1,13 +1,14 @@
 /*
-Purpose: Downloads NFL play-by-play CSV for a single season and converts it to JSONL with acquisition metadata and logs.
-Persists: Writes data/nfl/test-2025-pbp/raw/<season>/pbp.jsonl and data/nfl/test-2025-pbp/meta/{acquisition.json,sources.json,download.log}.
+Purpose: Downloads NFL play-by-play CSV for a single season and converts it to JSONL with acquisition metadata.
+Persists: Writes data/nfl/test-2025-pbp/raw/<season>/pbp.jsonl and data/nfl/test-2025-pbp/meta/{acquisition.json,sources.json}.
 Security Risks: Downloads remote data via HTTPS; no credentials are handled.
 */
 
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json;
-using Microsoft.VisualBasic.FileIO;
+using CsvHelper;
+using CsvHelper.Configuration;
 
 const int defaultSeason = 2025;
 const string defaultOutputRoot = "data/nfl/test-2025-pbp";
@@ -29,89 +30,60 @@ var metaDir = Path.Combine(outputRoot, "meta");
 var outputJsonlPath = Path.Combine(rawSeasonDir, "pbp.jsonl");
 var tempJsonlPath = Path.Combine(rawSeasonDir, "pbp.jsonl.tmp");
 var tempDownloadPath = Path.Combine(rawSeasonDir, $"play_by_play_{season}.csv.gz.tmp");
-var logPath = Path.Combine(metaDir, "download.log");
 
 Directory.CreateDirectory(rawSeasonDir);
 Directory.CreateDirectory(metaDir);
-using var log = new StreamWriter(logPath, append: true) { AutoFlush = true };
-
-void Log(string message)
-{
-    var timestamp = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
-    var line = $"[{timestamp}] {message}";
-    Console.WriteLine(line);
-    log.WriteLine(line);
-}
 
 if (File.Exists(outputJsonlPath) && !options.Force)
 {
-    Log($"Output already exists at {outputJsonlPath}. Use --force to re-download.");
+    Console.WriteLine($"Output already exists at {outputJsonlPath}. Use --force to re-download.");
     return 0;
 }
 
 if (File.Exists(tempJsonlPath))
 {
     File.Delete(tempJsonlPath);
-    Log($"Deleted temp JSONL file at {tempJsonlPath}.");
 }
 
 if (File.Exists(tempDownloadPath))
 {
     File.Delete(tempDownloadPath);
-    Log($"Deleted temp download file at {tempDownloadPath}.");
 }
 
-Log($"Downloading season {season} from {sourceUrl}...");
+Console.WriteLine($"Downloading season {season} from {sourceUrl}...");
 using (var http = new HttpClient())
+using (var response = await http.GetAsync(sourceUrl, HttpCompletionOption.ResponseHeadersRead))
 {
-    HttpResponseMessage response;
-    try
-    {
-        response = await http.GetAsync(sourceUrl, HttpCompletionOption.ResponseHeadersRead);
-    }
-    catch (HttpRequestException ex)
-    {
-        Log($"HTTP request failed for {sourceUrl}: {ex.Message}");
-        return 2;
-    }
-
-    Log($"HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {sourceUrl}.");
-    if (!response.IsSuccessStatusCode)
-    {
-        Log("Download failed. Verify the URL or pass --source-url to a valid data file.");
-        return 2;
-    }
-
+    response.EnsureSuccessStatusCode();
     await using var sourceStream = await response.Content.ReadAsStreamAsync();
     await using var targetStream = File.Create(tempDownloadPath);
     await sourceStream.CopyToAsync(targetStream);
 }
 
-Log("Converting CSV to JSONL...");
+Console.WriteLine("Converting CSV to JSONL...");
 await using (var fileStream = File.OpenRead(tempDownloadPath))
 await using (var gzip = new GZipStream(fileStream, CompressionMode.Decompress))
+using (var reader = new StreamReader(gzip))
 using (var writer = new StreamWriter(tempJsonlPath))
-using (var parser = new TextFieldParser(gzip))
 {
-    parser.TextFieldType = FieldType.Delimited;
-    parser.SetDelimiters(",");
-    parser.HasFieldsEnclosedInQuotes = true;
-
-    if (parser.EndOfData)
+    var config = new CsvConfiguration(CultureInfo.InvariantCulture)
     {
-        throw new InvalidDataException("CSV is empty.");
-    }
+        BadDataFound = null,
+        MissingFieldFound = null,
+        HeaderValidated = null
+    };
 
-    var headers = parser.ReadFields() ?? Array.Empty<string>();
-    Log($"CSV header fields: {headers.Length}.");
+    using var csv = new CsvReader(reader, config);
+    csv.Read();
+    csv.ReadHeader();
+    var headers = csv.HeaderRecord ?? Array.Empty<string>();
 
-    while (!parser.EndOfData)
+    while (csv.Read())
     {
-        var fields = parser.ReadFields() ?? Array.Empty<string>();
         var record = new Dictionary<string, string?>(headers.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < headers.Length; i++)
+        foreach (var header in headers)
         {
-            record[headers[i]] = i < fields.Length ? fields[i] : null;
+            record[header] = csv.GetField(header);
         }
 
         var json = JsonSerializer.Serialize(record);
@@ -121,8 +93,6 @@ using (var parser = new TextFieldParser(gzip))
 
 File.Move(tempJsonlPath, outputJsonlPath, overwrite: true);
 File.Delete(tempDownloadPath);
-Log($"Wrote JSONL output to {outputJsonlPath}.");
-Log($"Removed temp download file at {tempDownloadPath}.");
 
 var acquisition = new AcquisitionMetadata(
     Dataset: "NFL play-by-play",
@@ -145,8 +115,7 @@ var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
 await File.WriteAllTextAsync(Path.Combine(metaDir, "acquisition.json"), JsonSerializer.Serialize(acquisition, jsonOptions));
 await File.WriteAllTextAsync(Path.Combine(metaDir, "sources.json"), JsonSerializer.Serialize(sources, jsonOptions));
 
-Log($"Wrote metadata files to {metaDir}.");
-Log("Done.");
+Console.WriteLine($"Done. Wrote {outputJsonlPath} and metadata in {metaDir}.");
 return 0;
 
 static Options ParseOptions(string[] args)
@@ -200,7 +169,6 @@ static void PrintUsage()
     Console.WriteLine($"Default season: {defaultSeason}");
     Console.WriteLine($"Default output root: {defaultOutputRoot}");
     Console.WriteLine("Default source URL: https://github.com/nflverse/nflfastR-data/raw/master/play_by_play_{season}.csv.gz");
-    Console.WriteLine("Note: If the season URL does not exist, pass --source-url to a valid data file.");
 }
 
 sealed class Options
