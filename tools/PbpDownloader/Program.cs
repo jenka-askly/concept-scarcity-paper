@@ -11,7 +11,7 @@ using Microsoft.VisualBasic.FileIO;
 
 const int defaultSeason = 2025;
 const string defaultOutputRoot = "C:\\concept-scarcity-paper\\data/nfl/test-2025-pbp";
-const string defaultSourceTemplate = "https://github.com/nflverse/nflfastR-data/raw/master/play_by_play_{season}.csv.gz";
+const string defaultSourceTemplate = "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz";
 
 var options = ParseOptions(args);
 if (!options.IsValid)
@@ -22,13 +22,13 @@ if (!options.IsValid)
 
 var season = options.Season ?? defaultSeason;
 var outputRoot = options.OutputRoot ?? defaultOutputRoot;
-var sourceUrl = options.SourceUrl ?? defaultSourceTemplate.Replace("{season}", season.ToString(CultureInfo.InvariantCulture));
+var sourceUrlTemplate = options.SourceUrl ?? defaultSourceTemplate;
+var candidateUrls = BuildCandidateUrls(sourceUrlTemplate, season);
 
 var rawSeasonDir = Path.Combine(outputRoot, "raw", season.ToString(CultureInfo.InvariantCulture));
 var metaDir = Path.Combine(outputRoot, "meta");
 var outputJsonlPath = Path.Combine(rawSeasonDir, "pbp.jsonl");
 var tempJsonlPath = Path.Combine(rawSeasonDir, "pbp.jsonl.tmp");
-var tempDownloadPath = Path.Combine(rawSeasonDir, $"play_by_play_{season}.csv.gz.tmp");
 var logPath = Path.Combine(metaDir, "download.log");
 
 Directory.CreateDirectory(rawSeasonDir);
@@ -55,27 +55,57 @@ if (File.Exists(tempJsonlPath))
     Log($"Deleted temp JSONL file at {tempJsonlPath}.");
 }
 
+string? selectedUrl = null;
+foreach (var candidateUrl in candidateUrls)
+{
+    Log($"Preflight HEAD for {candidateUrl}...");
+    var headResult = await TryHeadAsync(candidateUrl);
+    if (headResult.IsSuccess)
+    {
+        selectedUrl = candidateUrl;
+        Log($"Preflight succeeded for {candidateUrl}.");
+        break;
+    }
+
+    Log($"Preflight {headResult.StatusSummary} for {candidateUrl}.");
+}
+
+if (selectedUrl is null)
+{
+    Log("No download source available. The season may not be published yet.");
+    Log("Attempted URLs:");
+    foreach (var attempted in candidateUrls)
+    {
+        Log($"- {attempted}");
+    }
+
+    return 2;
+}
+
+var sourceExtension = GetSourceExtension(selectedUrl);
+var tempDownloadPath = Path.Combine(rawSeasonDir, $"play_by_play_{season}{sourceExtension}.tmp");
+
 if (File.Exists(tempDownloadPath))
 {
     File.Delete(tempDownloadPath);
     Log($"Deleted temp download file at {tempDownloadPath}.");
 }
 
-Log($"Downloading season {season} from {sourceUrl}...");
+Log($"Downloading season {season} from {selectedUrl}...");
 using (var http = new HttpClient())
 {
     HttpResponseMessage response;
     try
     {
-        response = await http.GetAsync(sourceUrl, HttpCompletionOption.ResponseHeadersRead);
+        response = await http.GetAsync(selectedUrl, HttpCompletionOption.ResponseHeadersRead);
     }
     catch (HttpRequestException ex)
     {
-        Log($"HTTP request failed for {sourceUrl}: {ex.Message}");
+        Log($"HTTP request failed for {selectedUrl}: {ex.Message}");
         return 2;
     }
 
-    Log($"HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {sourceUrl}.");
+    Log($"HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {selectedUrl}.");
     if (!response.IsSuccessStatusCode)
     {
         Log("Download failed. Verify the URL or pass --source-url to a valid data file.");
@@ -89,9 +119,8 @@ using (var http = new HttpClient())
 
 Log("Converting CSV to JSONL...");
 await using (var fileStream = File.OpenRead(tempDownloadPath))
-await using (var gzip = new GZipStream(fileStream, CompressionMode.Decompress))
 using (var writer = new StreamWriter(tempJsonlPath))
-using (var parser = new TextFieldParser(gzip))
+using (var parser = new TextFieldParser(OpenSourceStream(fileStream, sourceExtension)))
 {
     parser.TextFieldType = FieldType.Delimited;
     parser.SetDelimiters(",");
@@ -128,15 +157,15 @@ var acquisition = new AcquisitionMetadata(
     Dataset: "NFL play-by-play",
     Season: season,
     RetrievedUtc: DateTimeOffset.UtcNow,
-    SourceUrl: sourceUrl,
+    SourceUrl: selectedUrl,
     Method: "Downloaded CSV via HTTPS and converted to JSONL per play.",
     Notes: "One-time snapshot for test data."
 );
 
 var sources = new SourceMetadata(
     Season: season,
-    SourceUrl: sourceUrl,
-    SourceFormat: "csv.gz",
+    SourceUrl: selectedUrl,
+    SourceFormat: sourceExtension.TrimStart('.'),
     OutputFormat: "jsonl",
     OutputPath: outputJsonlPath
 );
@@ -199,8 +228,84 @@ static void PrintUsage()
     Console.WriteLine("Usage: dotnet run -- [--season 2025] [--output-root path] [--source-url url] [--force]");
     Console.WriteLine($"Default season: {defaultSeason}");
     Console.WriteLine($"Default output root: {defaultOutputRoot}");
-    Console.WriteLine("Default source URL: https://github.com/nflverse/nflfastR-data/raw/master/play_by_play_{season}.csv.gz");
+    Console.WriteLine("Default source URL: https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.csv.gz");
     Console.WriteLine("Note: If the season URL does not exist, pass --source-url to a valid data file.");
+}
+
+static IReadOnlyList<string> BuildCandidateUrls(string sourceTemplate, int season)
+{
+    var seasonToken = season.ToString(CultureInfo.InvariantCulture);
+    var resolved = sourceTemplate.Contains("{season}", StringComparison.OrdinalIgnoreCase)
+        ? sourceTemplate.Replace("{season}", seasonToken, StringComparison.OrdinalIgnoreCase)
+        : sourceTemplate;
+
+    var baseUrl = resolved;
+    if (resolved.EndsWith(".csv.gz", StringComparison.OrdinalIgnoreCase))
+    {
+        baseUrl = resolved[..^".csv.gz".Length];
+    }
+    else if (resolved.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+    {
+        baseUrl = resolved[..^".csv".Length];
+    }
+
+    return new[]
+    {
+        $"{baseUrl}.csv.gz",
+        $"{baseUrl}.csv"
+    };
+}
+
+static string GetSourceExtension(string sourceUrl)
+{
+    if (sourceUrl.EndsWith(".csv.gz", StringComparison.OrdinalIgnoreCase))
+    {
+        return ".csv.gz";
+    }
+
+    if (sourceUrl.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+    {
+        return ".csv";
+    }
+
+    return ".csv";
+}
+
+static Stream OpenSourceStream(FileStream fileStream, string sourceExtension)
+{
+    if (sourceExtension.Equals(".csv.gz", StringComparison.OrdinalIgnoreCase))
+    {
+        return new GZipStream(fileStream, CompressionMode.Decompress, leaveOpen: false);
+    }
+
+    return fileStream;
+}
+
+static async Task<PreflightResult> TryHeadAsync(string url)
+{
+    using var http = new HttpClient();
+    try
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Head, url);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return PreflightResult.Success();
+        }
+
+        return PreflightResult.Failure($"{(int)response.StatusCode} {response.ReasonPhrase}");
+    }
+    catch (HttpRequestException ex)
+    {
+        return PreflightResult.Failure($"request error: {ex.Message}");
+    }
+}
+
+readonly record struct PreflightResult(bool IsSuccess, string StatusSummary)
+{
+    public static PreflightResult Success() => new(true, "OK");
+    public static PreflightResult Failure(string statusSummary) => new(false, statusSummary);
 }
 
 sealed class Options
