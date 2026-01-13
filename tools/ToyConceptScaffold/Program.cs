@@ -1,4 +1,4 @@
-// Purpose: Run a deterministic, debugger-friendly toy experiment comparing baseline prose prompts with CE scaffold formats.
+// Purpose: Run a deterministic, debugger-friendly toy experiment comparing baseline prose prompts with CE scaffold formats while mixing formats in one model.
 // Persists: None.
 // Security Risks: None.
 
@@ -230,19 +230,20 @@ internal static class Program
         var tokenCatalog = BuildTokenCatalog();
         var vocabulary = BuildVocabulary(tokenCatalog);
 
-        // Training-only mode is useful for quick loss inspection.
+        Console.WriteLine("Training...");
+        var model = TrainMixedModel(options, vocabulary, tokenCatalog, options.Seed + 11);
+
         if (options.Mode.Equals("train", StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Training...");
-            RunTrainingOnly(options, vocabulary, tokenCatalog);
             return 0;
         }
 
-        Console.WriteLine("Training...");
-        // Train one model per prompt format so each format has its own learned parameters.
-        var baselineModel = TrainModel(options, PromptFormat.Baseline, vocabulary, tokenCatalog, options.Seed + 11);
-        var ceNeoModel = TrainModel(options, PromptFormat.CeNeo, vocabulary, tokenCatalog, options.Seed + 22);
-        var ceEngModel = TrainModel(options, PromptFormat.CeEng, vocabulary, tokenCatalog, options.Seed + 33);
+        if (options.Mode.Equals("sanity", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine();
+            RunSanityCheck(options, model, vocabulary, tokenCatalog);
+            return 0;
+        }
 
         Console.WriteLine();
         Console.WriteLine("Evaluation: accuracy vs padding noise");
@@ -254,54 +255,48 @@ internal static class Program
         // Evaluate accuracy under increasing padding noise.
         foreach (var padTokens in options.PadLevels)
         {
-            var baselineAcc = Evaluate(options, PromptFormat.Baseline, baselineModel, vocabulary, tokenCatalog, padTokens, options.Seed + 101);
-            var ceNeoAcc = Evaluate(options, PromptFormat.CeNeo, ceNeoModel, vocabulary, tokenCatalog, padTokens, options.Seed + 202);
-            var ceEngAcc = Evaluate(options, PromptFormat.CeEng, ceEngModel, vocabulary, tokenCatalog, padTokens, options.Seed + 303);
+            var baselineAcc = Evaluate(options, PromptFormat.Baseline, model, vocabulary, tokenCatalog, padTokens, options.Seed + 101);
+            var ceNeoAcc = Evaluate(options, PromptFormat.CeNeo, model, vocabulary, tokenCatalog, padTokens, options.Seed + 202);
+            var ceEngAcc = Evaluate(options, PromptFormat.CeEng, model, vocabulary, tokenCatalog, padTokens, options.Seed + 303);
 
             Console.WriteLine($"{padTokens,-9} | {baselineAcc.LabelAcc:0.000}/{baselineAcc.CauseAcc:0.000} | {ceNeoAcc.LabelAcc:0.000}/{ceNeoAcc.CauseAcc:0.000} | {ceEngAcc.LabelAcc:0.000}/{ceEngAcc.CauseAcc:0.000}");
         }
 
         Console.WriteLine();
-        PrintParaphraseStress(options, vocabulary, tokenCatalog, baselineModel, ceNeoModel, ceEngModel);
+        PrintParaphraseStress(options, vocabulary, tokenCatalog, model);
 
         // Print a single example in all formats to visually confirm model behavior.
         if (options.PrintDemo)
         {
             Console.WriteLine();
-            PrintDemo(options, vocabulary, tokenCatalog, baselineModel, ceNeoModel, ceEngModel);
+            PrintDemo(options, vocabulary, tokenCatalog, model);
         }
 
         return 0;
     }
 
-    private static void RunTrainingOnly(Options options, IReadOnlyDictionary<string, int> vocabulary, TokenCatalog catalog)
-    {
-        TrainModel(options, PromptFormat.Baseline, vocabulary, catalog, options.Seed + 11);
-        TrainModel(options, PromptFormat.CeNeo, vocabulary, catalog, options.Seed + 22);
-        TrainModel(options, PromptFormat.CeEng, vocabulary, catalog, options.Seed + 33);
-    }
-
-    private static ToyModel TrainModel(
+    private static ToyModel TrainMixedModel(
         Options options,
-        PromptFormat format,
         IReadOnlyDictionary<string, int> vocabulary,
         TokenCatalog catalog,
         int seedOffset)
     {
-        // Each format uses its own RNG seed offset for deterministic training.
+        // One model sees a mixture of formats so CE formats compete with baseline for capacity,
+        // avoiding a trivial "CE=1.0 always" result from per-format training.
         var model = new ToyModel(vocabulary.Count, options.EmbedDim, seedOffset);
         var rng = new Random(seedOffset);
         var learningRate = 0.1;
-
-        Console.WriteLine($"Training ({FormatName(format)})...");
+        var trainPadLevels = new[] { 0, 5, 15, 40 };
 
         for (var epoch = 1; epoch <= options.Epochs; epoch++)
         {
             var totalLoss = 0.0;
             for (var i = 0; i < options.TrainSamples; i++)
             {
-                // Training uses clean prompts (no padding) so that noise is purely an evaluation stressor.
-                var example = GenerateExample(format, vocabulary, catalog, rng, 0, options.EnableParaphrase, includeRawText: false);
+                var format = SampleFormat(rng, baselineWeight: 0.5, ceNeoWeight: 0.25, ceEngWeight: 0.25);
+                var latent = SampleLatent(rng);
+                var trainPad = trainPadLevels[rng.Next(0, trainPadLevels.Length)];
+                var example = GenerateExample(format, vocabulary, catalog, rng, trainPad, options.EnableParaphrase, includeRawText: false, latentOverride: latent);
                 totalLoss += model.TrainStep(example.Tokens, example.Label, example.Cause, learningRate);
             }
 
@@ -350,9 +345,7 @@ internal static class Program
         Options options,
         IReadOnlyDictionary<string, int> vocabulary,
         TokenCatalog catalog,
-        ToyModel baselineModel,
-        ToyModel ceNeoModel,
-        ToyModel ceEngModel)
+        ToyModel model)
     {
         const int stressRuns = 5;
         const int padTokens = 15;
@@ -365,9 +358,9 @@ internal static class Program
             return;
         }
 
-        var baselineStats = StressRuns(options, PromptFormat.Baseline, baselineModel, vocabulary, catalog, padTokens, stressRuns);
-        var ceNeoStats = StressRuns(options, PromptFormat.CeNeo, ceNeoModel, vocabulary, catalog, padTokens, stressRuns);
-        var ceEngStats = StressRuns(options, PromptFormat.CeEng, ceEngModel, vocabulary, catalog, padTokens, stressRuns);
+        var baselineStats = StressRuns(options, PromptFormat.Baseline, model, vocabulary, catalog, padTokens, stressRuns);
+        var ceNeoStats = StressRuns(options, PromptFormat.CeNeo, model, vocabulary, catalog, padTokens, stressRuns);
+        var ceEngStats = StressRuns(options, PromptFormat.CeEng, model, vocabulary, catalog, padTokens, stressRuns);
 
         Console.WriteLine($"BASELINE: LabelAcc={baselineStats.LabelMean:0.000}±{baselineStats.LabelStd:0.000} CauseAcc={baselineStats.CauseMean:0.000}±{baselineStats.CauseStd:0.000}");
         Console.WriteLine($"CE-NEO:   LabelAcc={ceNeoStats.LabelMean:0.000}±{ceNeoStats.LabelStd:0.000} CauseAcc={ceNeoStats.CauseMean:0.000}±{ceNeoStats.CauseStd:0.000}");
@@ -400,9 +393,7 @@ internal static class Program
         Options options,
         IReadOnlyDictionary<string, int> vocabulary,
         TokenCatalog catalog,
-        ToyModel baselineModel,
-        ToyModel ceNeoModel,
-        ToyModel ceEngModel)
+        ToyModel model)
     {
         // Use a fixed latent state so the demo is deterministic and easy to compare across formats.
         var latent = new LatentState(1, 1, 0, 0);
@@ -413,9 +404,9 @@ internal static class Program
         Console.WriteLine($"TARGET: Label={target.Label} Cause={target.Cause}");
 
         var rng = new Random(options.Seed + 1234);
-        PrintDemoForFormat("BASELINE", PromptFormat.Baseline, baselineModel, vocabulary, catalog, latent, rng, options.EnableParaphrase);
-        PrintDemoForFormat("CE-NEO", PromptFormat.CeNeo, ceNeoModel, vocabulary, catalog, latent, rng, options.EnableParaphrase);
-        PrintDemoForFormat("CE-ENG", PromptFormat.CeEng, ceEngModel, vocabulary, catalog, latent, rng, options.EnableParaphrase);
+        PrintDemoForFormat("BASELINE", PromptFormat.Baseline, model, vocabulary, catalog, latent, rng, options.EnableParaphrase);
+        PrintDemoForFormat("CE-NEO", PromptFormat.CeNeo, model, vocabulary, catalog, latent, rng, options.EnableParaphrase);
+        PrintDemoForFormat("CE-ENG", PromptFormat.CeEng, model, vocabulary, catalog, latent, rng, options.EnableParaphrase);
     }
 
     private static void PrintDemoForFormat(
@@ -456,14 +447,7 @@ internal static class Program
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
         };
 
-        // Append padding noise tokens to stress attention dilution.
-        if (padTokens > 0)
-        {
-            for (var i = 0; i < padTokens; i++)
-            {
-                tokens.Add(catalog.NoiseTokens[rng.Next(0, catalog.NoiseTokens.Count)]);
-            }
-        }
+        AppendNoiseTokens(tokens, catalog, rng, padTokens);
 
         var tokenIds = tokens.Select(token => vocabulary[token]).ToArray();
         var rawText = includeRawText ? string.Join(' ', tokens) : string.Empty;
@@ -537,6 +521,12 @@ internal static class Program
             useNeo ? $"frictal={latent.FrictionDrop}" : $"friction_drop={latent.FrictionDrop}",
             useNeo ? $"compliq={latent.ComplianceHigh}" : $"compliance_high={latent.ComplianceHigh}"
         };
+
+        var distractorKeys = useNeo ? catalog.CeNeoDistractorKeys : catalog.CeEngDistractorKeys;
+        foreach (var distractorKey in distractorKeys)
+        {
+            tokens.Add($"{distractorKey}={rng.Next(0, 2)}");
+        }
 
         if (enableParaphrase)
         {
@@ -625,6 +615,8 @@ internal static class Program
                 "noted",
                 "signal"
             },
+            CeNeoDistractorKeys = Enumerable.Range(0, 6).Select(i => $"distrax{i}").ToList(),
+            CeEngDistractorKeys = Enumerable.Range(0, 6).Select(i => $"distractor{i}").ToList(),
             NoiseTokens = Enumerable.Range(0, 200).Select(i => $"noise{i}").ToList()
         };
     }
@@ -650,6 +642,8 @@ internal static class Program
         foreach (var clause in catalog.ComplianceHighNegative) AddTokens(clause);
 
         AddTokens(catalog.FillerTokens);
+        AddTokens(catalog.CeNeoDistractorKeys);
+        AddTokens(catalog.CeEngDistractorKeys);
         AddTokens(catalog.NoiseTokens);
         AddTokens(new[] { "observed" });
 
@@ -664,6 +658,19 @@ internal static class Program
             tokens.Add($"shear_low={value}");
             tokens.Add($"friction_drop={value}");
             tokens.Add($"compliance_high={value}");
+        }
+
+        foreach (var value in new[] { "0", "1" })
+        {
+            foreach (var key in catalog.CeNeoDistractorKeys)
+            {
+                tokens.Add($"{key}={value}");
+            }
+
+            foreach (var key in catalog.CeEngDistractorKeys)
+            {
+                tokens.Add($"{key}={value}");
+            }
         }
 
         return tokens
@@ -777,6 +784,62 @@ internal static class Program
         }
     }
 
+    private static PromptFormat SampleFormat(Random rng, double baselineWeight, double ceNeoWeight, double ceEngWeight)
+    {
+        var total = baselineWeight + ceNeoWeight + ceEngWeight;
+        var sample = rng.NextDouble() * total;
+        if (sample < baselineWeight)
+        {
+            return PromptFormat.Baseline;
+        }
+
+        if (sample < baselineWeight + ceNeoWeight)
+        {
+            return PromptFormat.CeNeo;
+        }
+
+        return PromptFormat.CeEng;
+    }
+
+    private static void AppendNoiseTokens(List<string> tokens, TokenCatalog catalog, Random rng, int padTokens)
+    {
+        if (padTokens <= 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < padTokens; i++)
+        {
+            tokens.Add(catalog.NoiseTokens[rng.Next(0, catalog.NoiseTokens.Count)]);
+        }
+    }
+
+    private static void RunSanityCheck(
+        Options options,
+        ToyModel model,
+        IReadOnlyDictionary<string, int> vocabulary,
+        TokenCatalog catalog)
+    {
+        Console.WriteLine("Sanity check: token counts + noise tails + pooled norm");
+        var rng = new Random(options.Seed + 707);
+        var latent = SampleLatent(rng);
+        var pads = new[] { 0, 80 };
+
+        foreach (var format in new[] { PromptFormat.Baseline, PromptFormat.CeNeo, PromptFormat.CeEng })
+        {
+            foreach (var pad in pads)
+            {
+                var example = GenerateExample(format, vocabulary, catalog, rng, pad, options.EnableParaphrase, includeRawText: true, latentOverride: latent);
+                var forward = model.Forward(example.Tokens);
+                var tokens = example.RawText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var tail = tokens.Length <= 10 ? tokens : tokens[^10..];
+                var norm = Math.Sqrt(forward.Pooled.Sum(value => value * value));
+                Console.WriteLine($"{FormatName(format)} pad={pad} tokenCount={tokens.Length} pooledNorm={norm:0.0000}");
+                Console.WriteLine($"tail: {string.Join(' ', tail)}");
+            }
+        }
+    }
+
     private static double Mean(IReadOnlyList<double> values)
     {
         if (values.Count == 0)
@@ -810,6 +873,8 @@ internal static class Program
         public List<List<string>> ComplianceHighPositive { get; init; } = new();
         public List<List<string>> ComplianceHighNegative { get; init; } = new();
         public List<string> FillerTokens { get; init; } = new();
+        public List<string> CeNeoDistractorKeys { get; init; } = new();
+        public List<string> CeEngDistractorKeys { get; init; } = new();
         public List<string> NoiseTokens { get; init; } = new();
     }
 }
