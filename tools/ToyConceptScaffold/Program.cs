@@ -65,6 +65,7 @@ internal static class Program
     // This is intentionally tiny so you can step through every op in a debugger.
     private sealed class ToyModel
     {
+        private const double GradClipNorm = 1.0;
         private readonly int _vocabSize;
         private readonly int _embedDim;
         private readonly double[,] _embeddings;
@@ -126,6 +127,12 @@ internal static class Program
                 }
             }
 
+            var invTokenCount = 1.0 / Math.Max(1, tokens.Length);
+            for (var d = 0; d < _embedDim; d++)
+            {
+                pooled[d] *= invTokenCount;
+            }
+
             var labelLogits = new double[_labelBias.Length];
             var causeLogits = new double[_causeBias.Length];
 
@@ -161,7 +168,7 @@ internal static class Program
         }
 
         // One SGD step; gradients are derived directly from cross-entropy on softmax outputs.
-        public double TrainStep(int[] tokens, Label label, Cause cause, double learningRate)
+        public double TrainStep(int[] tokens, Label label, Cause cause, double learningRate, int epoch, int sampleIndex)
         {
             var forward = Forward(tokens);
 
@@ -173,49 +180,196 @@ internal static class Program
 
             var gradPooled = new double[_embedDim];
 
+            var dLabelWeights = new double[_embedDim, labelGrad.Length];
+            var dCauseWeights = new double[_embedDim, causeGrad.Length];
+            var dLabelBias = (double[])labelGrad.Clone();
+            var dCauseBias = (double[])causeGrad.Clone();
+
             for (var d = 0; d < _embedDim; d++)
             {
                 var grad = 0.0;
                 for (var c = 0; c < labelGrad.Length; c++)
                 {
                     grad += _labelWeights[d, c] * labelGrad[c];
-                    _labelWeights[d, c] -= learningRate * forward.Pooled[d] * labelGrad[c];
+                    dLabelWeights[d, c] = forward.Pooled[d] * labelGrad[c];
                 }
 
                 for (var c = 0; c < causeGrad.Length; c++)
                 {
                     grad += _causeWeights[d, c] * causeGrad[c];
-                    _causeWeights[d, c] -= learningRate * forward.Pooled[d] * causeGrad[c];
+                    dCauseWeights[d, c] = forward.Pooled[d] * causeGrad[c];
                 }
 
                 gradPooled[d] = grad;
             }
 
-            for (var c = 0; c < labelGrad.Length; c++)
-            {
-                _labelBias[c] -= learningRate * labelGrad[c];
-            }
-
-            for (var c = 0; c < causeGrad.Length; c++)
-            {
-                _causeBias[c] -= learningRate * causeGrad[c];
-            }
-
+            var invTokenCount = 1.0 / Math.Max(1, tokens.Length);
+            var embeddingGrads = new Dictionary<int, double[]>();
             for (var i = 0; i < tokens.Length; i++)
             {
                 var token = tokens[i];
+                if (!embeddingGrads.TryGetValue(token, out var grad))
+                {
+                    grad = new double[_embedDim];
+                    embeddingGrads[token] = grad;
+                }
+
                 for (var d = 0; d < _embedDim; d++)
                 {
-                    _embeddings[token, d] -= learningRate * gradPooled[d];
+                    grad[d] += gradPooled[d] * invTokenCount;
                 }
             }
 
             var labelLoss = -Math.Log(Math.Max(forward.LabelProbs[(int)label], 1e-12));
             var causeLoss = -Math.Log(Math.Max(forward.CauseProbs[(int)cause], 1e-12));
-            return labelLoss + causeLoss;
+            var loss = labelLoss + causeLoss;
+
+            if (double.IsNaN(loss) || double.IsInfinity(loss))
+            {
+                var maxPooled = MaxAbs(forward.Pooled);
+                var maxLabelLogit = MaxAbs(forward.LabelLogits);
+                var maxCauseLogit = MaxAbs(forward.CauseLogits);
+                Console.WriteLine($"NaN loss @ epoch {epoch} sample {sampleIndex} max|h|={maxPooled:0.0000} max|labelLogit|={maxLabelLogit:0.0000} max|causeLogit|={maxCauseLogit:0.0000}");
+                return 50.0;
+            }
+
+            ClipGradients(dLabelWeights, dCauseWeights, dLabelBias, dCauseBias, embeddingGrads, GradClipNorm);
+
+            for (var d = 0; d < _embedDim; d++)
+            {
+                for (var c = 0; c < labelGrad.Length; c++)
+                {
+                    _labelWeights[d, c] -= learningRate * dLabelWeights[d, c];
+                }
+
+                for (var c = 0; c < causeGrad.Length; c++)
+                {
+                    _causeWeights[d, c] -= learningRate * dCauseWeights[d, c];
+                }
+            }
+
+            for (var c = 0; c < labelGrad.Length; c++)
+            {
+                _labelBias[c] -= learningRate * dLabelBias[c];
+            }
+
+            for (var c = 0; c < causeGrad.Length; c++)
+            {
+                _causeBias[c] -= learningRate * dCauseBias[c];
+            }
+
+            foreach (var (token, grad) in embeddingGrads)
+            {
+                for (var d = 0; d < _embedDim; d++)
+                {
+                    _embeddings[token, d] -= learningRate * grad[d];
+                }
+            }
+
+            return loss;
         }
 
         private double NextUniform() => _rng.NextDouble();
+
+        private static void ClipGradients(
+            double[,] dLabelWeights,
+            double[,] dCauseWeights,
+            double[] dLabelBias,
+            double[] dCauseBias,
+            Dictionary<int, double[]> embeddingGrads,
+            double clipNorm)
+        {
+            var sumSquares = 0.0;
+            for (var i = 0; i < dLabelWeights.GetLength(0); i++)
+            {
+                for (var j = 0; j < dLabelWeights.GetLength(1); j++)
+                {
+                    sumSquares += dLabelWeights[i, j] * dLabelWeights[i, j];
+                }
+            }
+
+            for (var i = 0; i < dCauseWeights.GetLength(0); i++)
+            {
+                for (var j = 0; j < dCauseWeights.GetLength(1); j++)
+                {
+                    sumSquares += dCauseWeights[i, j] * dCauseWeights[i, j];
+                }
+            }
+
+            for (var i = 0; i < dLabelBias.Length; i++)
+            {
+                sumSquares += dLabelBias[i] * dLabelBias[i];
+            }
+
+            for (var i = 0; i < dCauseBias.Length; i++)
+            {
+                sumSquares += dCauseBias[i] * dCauseBias[i];
+            }
+
+            foreach (var grad in embeddingGrads.Values)
+            {
+                for (var i = 0; i < grad.Length; i++)
+                {
+                    sumSquares += grad[i] * grad[i];
+                }
+            }
+
+            var norm = Math.Sqrt(sumSquares);
+            if (norm <= clipNorm || norm == 0.0)
+            {
+                return;
+            }
+
+            var scale = clipNorm / norm;
+            for (var i = 0; i < dLabelWeights.GetLength(0); i++)
+            {
+                for (var j = 0; j < dLabelWeights.GetLength(1); j++)
+                {
+                    dLabelWeights[i, j] *= scale;
+                }
+            }
+
+            for (var i = 0; i < dCauseWeights.GetLength(0); i++)
+            {
+                for (var j = 0; j < dCauseWeights.GetLength(1); j++)
+                {
+                    dCauseWeights[i, j] *= scale;
+                }
+            }
+
+            for (var i = 0; i < dLabelBias.Length; i++)
+            {
+                dLabelBias[i] *= scale;
+            }
+
+            for (var i = 0; i < dCauseBias.Length; i++)
+            {
+                dCauseBias[i] *= scale;
+            }
+
+            foreach (var grad in embeddingGrads.Values)
+            {
+                for (var i = 0; i < grad.Length; i++)
+                {
+                    grad[i] *= scale;
+                }
+            }
+        }
+
+        private static double MaxAbs(double[] values)
+        {
+            var max = 0.0;
+            for (var i = 0; i < values.Length; i++)
+            {
+                var value = Math.Abs(values[i]);
+                if (value > max)
+                {
+                    max = value;
+                }
+            }
+
+            return max;
+        }
     }
 
     private static int Main(string[] args)
@@ -285,7 +439,7 @@ internal static class Program
         // avoiding a trivial "CE=1.0 always" result from per-format training.
         var model = new ToyModel(vocabulary.Count, options.EmbedDim, seedOffset);
         var rng = new Random(seedOffset);
-        var learningRate = 0.1;
+        var learningRate = 0.005;
         var trainPadLevels = new[] { 0, 5, 15, 40 };
 
         for (var epoch = 1; epoch <= options.Epochs; epoch++)
@@ -297,11 +451,12 @@ internal static class Program
                 var latent = SampleLatent(rng);
                 var trainPad = trainPadLevels[rng.Next(0, trainPadLevels.Length)];
                 var example = GenerateExample(format, vocabulary, catalog, rng, trainPad, options.EnableParaphrase, includeRawText: false, latentOverride: latent);
-                totalLoss += model.TrainStep(example.Tokens, example.Label, example.Cause, learningRate);
+                totalLoss += model.TrainStep(example.Tokens, example.Label, example.Cause, learningRate, epoch, i + 1);
             }
 
             var avgLoss = totalLoss / options.TrainSamples;
-            Console.WriteLine($"Epoch {epoch}/{options.Epochs} avg loss: {avgLoss:0.0000}");
+            var sanity = EvaluateSample(options, PromptFormat.Baseline, model, vocabulary, catalog, padTokens: 0, seedOffset: options.Seed + 777, sampleCount: 200);
+            Console.WriteLine($"Epoch {epoch}/{options.Epochs} avg loss: {avgLoss:0.0000} | sanity LabelAcc@pad0={sanity.LabelAcc:0.000}");
         }
 
         return model;
@@ -339,6 +494,40 @@ internal static class Program
         }
 
         return ((double)correctLabel / options.TestSamples, (double)correctCause / options.TestSamples);
+    }
+
+    private static (double LabelAcc, double CauseAcc) EvaluateSample(
+        Options options,
+        PromptFormat format,
+        ToyModel model,
+        IReadOnlyDictionary<string, int> vocabulary,
+        TokenCatalog catalog,
+        int padTokens,
+        int seedOffset,
+        int sampleCount)
+    {
+        var latentRng = new Random(options.Seed + 500 + padTokens);
+        var renderRng = new Random(seedOffset + padTokens * 31);
+        var correctLabel = 0;
+        var correctCause = 0;
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var latent = SampleLatent(latentRng);
+            var example = GenerateExample(format, vocabulary, catalog, renderRng, padTokens, options.EnableParaphrase, includeRawText: false, latentOverride: latent);
+            var prediction = model.Predict(example.Tokens);
+            if (prediction.Label == example.Label)
+            {
+                correctLabel++;
+            }
+
+            if (prediction.Cause == example.Cause)
+            {
+                correctCause++;
+            }
+        }
+
+        return ((double)correctLabel / sampleCount, (double)correctCause / sampleCount);
     }
 
     private static void PrintParaphraseStress(
@@ -743,12 +932,18 @@ internal static class Program
     private static int ArgMax(double[] values)
     {
         var bestIndex = 0;
-        var bestValue = values[0];
-        for (var i = 1; i < values.Length; i++)
+        var bestValue = double.NegativeInfinity;
+        for (var i = 0; i < values.Length; i++)
         {
-            if (values[i] > bestValue)
+            var value = values[i];
+            if (double.IsNaN(value))
             {
-                bestValue = values[i];
+                continue;
+            }
+
+            if (value > bestValue)
+            {
+                bestValue = value;
                 bestIndex = i;
             }
         }
@@ -765,6 +960,17 @@ internal static class Program
         {
             exp[i] = Math.Exp(logits[i] - max);
             sum += exp[i];
+        }
+
+        if (sum <= 0.0 || double.IsNaN(sum) || double.IsInfinity(sum))
+        {
+            var uniform = 1.0 / logits.Length;
+            for (var i = 0; i < exp.Length; i++)
+            {
+                exp[i] = uniform;
+            }
+
+            return exp;
         }
 
         for (var i = 0; i < exp.Length; i++)
