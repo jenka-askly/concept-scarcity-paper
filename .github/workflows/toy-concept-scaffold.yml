@@ -1,0 +1,30 @@
+# Purpose: Build and run the ToyConceptScaffold console experiment in CI for reproducible logs.
+# Persists: None.
+# Security Risks: None.
+
+name: toy-concept-scaffold
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/ToyConceptScaffold/**"
+      - ".github/workflows/toy-concept-scaffold.yml"
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build
+        run: dotnet build tools/ToyConceptScaffold/ToyConceptScaffold.csproj
+
+      - name: Run (short)
+        run: dotnet run --project tools/ToyConceptScaffold -- --mode eval --seed 123 --epochs 3 --train-samples 6000 --test-samples 1000

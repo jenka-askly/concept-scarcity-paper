@@ -34,6 +34,7 @@ pwsh -Command "latexmk -pdf -cd paper/main.tex"
 - `build-paper.ps1`: GitHub Actions workflow definition for building `paper/main.pdf`.
 - `LICENSE`: License for this repository.
 - `README.md`: This file.
+- `tools/ToyConceptScaffold/`: Console-only toy experiment comparing baseline prose prompts with concept scaffold formats (see `tools/ToyConceptScaffold/README.md`).
 
 ## Citation
 ```bibtex
