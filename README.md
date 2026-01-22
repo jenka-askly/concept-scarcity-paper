@@ -10,7 +10,12 @@ Security Risks: None.
 Text-based reasoning systems can describe physical situations but often struggle with embodied tasks because ordinary language lacks stable, fine-grained concepts for manipulation micro-phenomena. A compact concept scaffold for hand squeezing provides explicit handles for tactile cues, material response, and control laws, reducing ambiguity and improving mechanistic reasoning in a bounded domain. The paper proposes a controlled evaluation that holds physical information constant while varying representational form, plus a short verification protocol (Box 1) to reproduce the effect.
 
 ## Download PDF
-No PDF is checked into this repository. Build the PDF locally using the steps below (or via the GitHub Actions workflow described in `build-paper.ps1`). If you want a downloadable artifact, consider attaching `paper/main.pdf` as a GitHub Release asset after a successful build.
+No PDF is checked into this repository. Build the PDF locally using the steps below (or via the GitHub Actions workflow described in `build-paper.ps1`). Download tagged release PDFs from the GitHub Releases page: https://github.com/jenka-askly/concept-scarcity-paper/releases
+
+## How to cut a release
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
 
 ## Keywords
 concept scarcity; concept scaffolds; LLM reasoning; squeezing; embodied intelligence; tactile feedback; manipulation; representation engineering; attention dilution; mechanistic reasoning
